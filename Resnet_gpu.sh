@@ -59,4 +59,4 @@ python -c "import numpy; print('NumPy version:', numpy.__version__); import dask
 
 # Run the cloud classification script
 echo "Starting cloud classification and model training..."
-python -u Resnet1.py
+python -u ResnetCNN.py
