@@ -109,7 +109,7 @@ python Features.py
 
 Uses mutual information, random forest, and AUC to rank features
 
-Output: feature_analysis/ (if directory is created)
+Output: feature_analysis/
 
 # Full Pipeline
 
