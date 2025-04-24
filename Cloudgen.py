@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 from tensorflow.keras import layers, Model, constraints
 from tensorflow.keras.optimizers import Adam
 
-# Directories
+# Directory settings - pointing to output from previous classification step
 DATA_DIR = "cloud_data1"
 OUTPUT_DIR = os.path.join(DATA_DIR, "generated1")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Load paired data
+# Load paired data created by the previous optimization script
 print("Loading paired data for GAN training...")
 with open(os.path.join(DATA_DIR, "paired_data_optimized.json"), 'r') as f:
     paired_data = json.load(f)
@@ -20,35 +20,40 @@ print(f"Found {len(paired_data)} paired images")
 
 # Function to load and normalize paired images
 def load_paired_images(pairs, max_pairs=None):
-    """Load geographically matched pairs of cloudy and clear images"""
+    """Load geographically matched pairs of cloudy and clear images
+    
+    This function handles loading the paired image data created in previous steps,
+    ensuring proper normalization and consistent shapes for training.
+    """
     if max_pairs and max_pairs < len(pairs):
-        # Use only a subset if requested
+        # Use only a subset if requested - helps manage memory constraints
         pairs = pairs[:max_pairs]
         
     cloudy_images = []
     clear_images = []
     
     for i, pair in enumerate(pairs):
-        # Load cloudy image
+        # Load cloudy image metadata and file path
         with open(os.path.join(DATA_DIR, "metadata", f"{pair['cloudy_id']}.json"), 'r') as f:
             cloudy_meta = json.load(f)
         cloudy_path = cloudy_meta['img_path']
         
-        # Load clear image
+        # Load clear image metadata and file path
         with open(os.path.join(DATA_DIR, "metadata", f"{pair['clear_id']}.json"), 'r') as f:
             clear_meta = json.load(f)
         clear_path = clear_meta['img_path']
         
-        # Load numpy arrays
+        # Load numpy arrays containing the actual image data
         cloudy_img = np.load(cloudy_path)
         clear_img = np.load(clear_path)
         
-        # Ensure both images have the same shape
+        # Quality control: ensure both images have the same shape
         if cloudy_img.shape != clear_img.shape:
             print(f"Warning: Shape mismatch in pair {i}. Skipping.")
             continue
             
-        # Ensure normalization to [0,1]
+        # Robust normalization to [0,1] range using percentile clipping
+        # This helps handle outliers and ensures consistent value ranges
         for img in [cloudy_img, clear_img]:
             for c in range(img.shape[-1]):
                 channel = img[:,:,c]
@@ -61,19 +66,19 @@ def load_paired_images(pairs, max_pairs=None):
         cloudy_images.append(cloudy_img)
         clear_images.append(clear_img)
         
-        # Progress update
+        # Progress update to monitor loading process
         if (i+1) % 100 == 0:
             print(f"Loaded {i+1}/{len(pairs)} pairs")
             
     return np.array(cloudy_images), np.array(clear_images)
 
-# Load paired data
+# Load paired data with memory-safe limit
 print("Loading and preparing paired images...")
-cloudy, clear = load_paired_images(paired_data, max_pairs=2000)  # Limit pairs for memory management
+cloudy, clear = load_paired_images(paired_data, max_pairs=2000)  # Adjust this limit based on available RAM
 
 print(f"Loaded data: cloudy {cloudy.shape}, clear {clear.shape}")
 
-# Visualize sample pairs to verify proper loading
+# Visualize sample pairs to verify proper loading and normalization
 plt.figure(figsize=(12, 6))
 for i in range(min(5, len(cloudy))):
     plt.subplot(2, 5, i+1)
@@ -90,11 +95,17 @@ plt.savefig(f"{OUTPUT_DIR}/sample_pairs.png")
 plt.close()
 print(f"✓ Saved sample paired data visualization")
 
-# Generator (Improved U-Net)
+# Generator (Improved U-Net architecture)
 def build_generator(input_shape):
+    """
+    Build a U-Net style generator for the cloud removal task
+    
+    This architecture uses skip connections between encoder and decoder
+    to preserve spatial information important for reconstruction.
+    """
     inputs = layers.Input(shape=input_shape)
 
-    # Encoder with batch normalization
+    # Encoder - progressively downsamples the image while increasing feature depth
     x1 = layers.Conv2D(64, 4, strides=2, padding='same')(inputs)
     x1 = layers.BatchNormalization()(x1)
     x1 = layers.LeakyReLU(0.2)(x1)
@@ -107,42 +118,47 @@ def build_generator(input_shape):
     x3 = layers.BatchNormalization()(x3)
     x3 = layers.LeakyReLU(0.2)(x3)
 
-    # Bottleneck
+    # Bottleneck - deepest layer with highest feature abstraction
     b = layers.Conv2D(512, 4, strides=2, padding='same')(x3)
     b = layers.BatchNormalization()(b)
     b = layers.LeakyReLU(0.2)(b)
 
-    # Decoder with dropout for early layers
+    # Decoder - progressively upsamples while incorporating encoder features via skip connections
     d3 = layers.Conv2DTranspose(256, 4, strides=2, padding='same')(b)
     d3 = layers.BatchNormalization()(d3)
-    d3 = layers.Dropout(0.5)(d3)  # Dropout for regularization
+    d3 = layers.Dropout(0.5)(d3)  # Dropout for regularization in early upsampling layers
     d3 = layers.ReLU()(d3)
-    d3 = layers.Concatenate()([d3, x3])
+    d3 = layers.Concatenate()([d3, x3])  # Skip connection from encoder
     
     d2 = layers.Conv2DTranspose(128, 4, strides=2, padding='same')(d3)
     d2 = layers.BatchNormalization()(d2)
     d2 = layers.ReLU()(d2)
-    d2 = layers.Concatenate()([d2, x2])
+    d2 = layers.Concatenate()([d2, x2])  # Skip connection from encoder
     
     d1 = layers.Conv2DTranspose(64, 4, strides=2, padding='same')(d2)
     d1 = layers.BatchNormalization()(d1)
     d1 = layers.ReLU()(d1)
-    d1 = layers.Concatenate()([d1, x1])
+    d1 = layers.Concatenate()([d1, x1])  # Skip connection from encoder
     
     d0 = layers.Conv2DTranspose(32, 4, strides=2, padding='same')(d1)
     d0 = layers.BatchNormalization()(d0)
     d0 = layers.ReLU()(d0)
 
-    # Output layer with sigmoid to ensure proper [0,1] range
+    # Output layer with sigmoid activation to ensure proper [0,1] range
     outputs = layers.Conv2D(input_shape[-1], 3, padding='same', activation='sigmoid')(d0)
     
     return Model(inputs, outputs, name="Generator")
 
-# Discriminator with spectral normalization
+# Discriminator with stability enhancements
 def build_discriminator(input_shape):
+    """
+    Build a discriminator network with enhanced stability features
+    
+    Uses kernel constraints to prevent exploding gradients during adversarial training.
+    """
     inputs = layers.Input(shape=input_shape)
     
-    # Use kernel constraint for stability
+    # Use kernel constraint for training stability
     kernel_constraint = constraints.MaxNorm(1.0)
     
     x = layers.Conv2D(64, 4, strides=2, padding='same', 
@@ -166,26 +182,30 @@ def build_discriminator(input_shape):
     
     return Model(inputs, x, name="Discriminator")
 
-# Build models
+# Build models with input shape derived from loaded data
 input_shape = cloudy.shape[1:]
 generator = build_generator(input_shape)
 discriminator = build_discriminator(input_shape)
 
-# Print model summaries
+# Print model summaries for architecture verification
 generator.summary()
 discriminator.summary()
 
-# Custom GAN training class
+# Custom GAN training class with advanced metrics and visualization
 class CloudRemovalGAN:
+    """
+    Cloud removal GAN implementation with comprehensive training, 
+    evaluation, and visualization capabilities
+    """
     def __init__(self, generator, discriminator):
         self.generator = generator
         self.discriminator = discriminator
         
-        # Optimizers
+        # Optimizers with parameters tuned for GAN stability
         self.g_optimizer = Adam(learning_rate=0.0002, beta_1=0.5)
         self.d_optimizer = Adam(learning_rate=0.0002, beta_1=0.5)
         
-        # Loss tracking
+        # Loss and metrics tracking
         self.gen_loss_tracker = tf.keras.metrics.Mean(name="generator_loss")
         self.disc_loss_tracker = tf.keras.metrics.Mean(name="discriminator_loss")
         self.l1_loss_tracker = tf.keras.metrics.Mean(name="l1_loss")
@@ -195,11 +215,12 @@ class CloudRemovalGAN:
         # Binary cross entropy loss for adversarial component
         self.loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=True)
         
-        # Weight for L1 loss
+        # Weight for L1 loss - balances pixel reconstruction vs. adversarial objectives
         self.lambda_l1 = 100.0
     
     @tf.function
     def train_discriminator_step(self, cloudy_images, clear_images):
+        """Single training step for discriminator, optimized with TF graph execution"""
         # Generate fake images
         fake_images = self.generator(cloudy_images, training=True)
         
@@ -210,7 +231,7 @@ class CloudRemovalGAN:
             # Fake images
             fake_output = self.discriminator(fake_images, training=True)
             
-            # Discriminator losses
+            # Discriminator losses - should correctly classify real vs fake
             real_loss = self.loss_fn(tf.ones_like(real_output), real_output)
             fake_loss = self.loss_fn(tf.zeros_like(fake_output), fake_output)
             disc_loss = real_loss + fake_loss
@@ -223,6 +244,7 @@ class CloudRemovalGAN:
     
     @tf.function
     def train_generator_step(self, cloudy_images, clear_images):
+        """Single training step for generator, optimized with TF graph execution"""
         with tf.GradientTape() as gen_tape:
             # Generate fake images
             fake_images = self.generator(cloudy_images, training=True)
@@ -233,36 +255,36 @@ class CloudRemovalGAN:
             # Generator adversarial loss - wants discriminator to think its images are real
             gen_loss = self.loss_fn(tf.ones_like(fake_output), fake_output)
             
-            # L1 loss - pixel-wise absolute difference
+            # L1 loss - pixel-wise absolute difference for content preservation
             l1_loss = tf.reduce_mean(tf.abs(clear_images - fake_images))
             
-            # Combined loss
+            # Combined loss with weighted L1 component
             total_gen_loss = gen_loss + self.lambda_l1 * l1_loss
         
         # Apply gradients
         gen_gradients = gen_tape.gradient(total_gen_loss, self.generator.trainable_variables)
         self.g_optimizer.apply_gradients(zip(gen_gradients, self.generator.trainable_variables))
         
-        # Calculate image quality metrics
+        # Calculate image quality metrics for monitoring
         psnr = tf.reduce_mean(tf.image.psnr(clear_images, fake_images, max_val=1.0))
         ssim = tf.reduce_mean(tf.image.ssim(clear_images, fake_images, max_val=1.0))
         
         return gen_loss, l1_loss, psnr, ssim
     
     def train(self, cloudy_images, clear_images, epochs=100, batch_size=8):
-        """Train the GAN"""
+        """Train the GAN with comprehensive progress tracking and visualization"""
         dataset_size = len(cloudy_images)
         steps_per_epoch = dataset_size // batch_size
         
-        # Create TensorFlow dataset
+        # Create TensorFlow dataset for efficient batching and shuffling
         dataset = tf.data.Dataset.from_tensor_slices((cloudy_images, clear_images))
         dataset = dataset.shuffle(buffer_size=dataset_size).batch(batch_size)
         
-        # For visualization
-        test_cloudy = cloudy_images[:5]  # Sample images for visualization
-        test_clear = clear_images[:5]   # Corresponding ground truth images
+        # Sample images for periodic visualization of progress
+        test_cloudy = cloudy_images[:5]
+        test_clear = clear_images[:5]
         
-        # Training history
+        # Training history for plotting learning curves
         history = {
             'gen_loss': [],
             'disc_loss': [],
@@ -274,7 +296,7 @@ class CloudRemovalGAN:
         for epoch in range(epochs):
             print(f"Epoch {epoch+1}/{epochs}")
             
-            # Reset metrics
+            # Reset metrics for new epoch
             self.gen_loss_tracker.reset_states()
             self.disc_loss_tracker.reset_states()
             self.l1_loss_tracker.reset_states()
@@ -285,18 +307,18 @@ class CloudRemovalGAN:
                 # Train discriminator
                 disc_loss = self.train_discriminator_step(cloudy_batch, clear_batch)
                 
-                # Train generator (twice for stability)
+                # Train generator (twice for better balance, common practice in GANs)
                 gen_loss, l1_loss, psnr, ssim = self.train_generator_step(cloudy_batch, clear_batch)
                 gen_loss2, l1_loss2, psnr2, ssim2 = self.train_generator_step(cloudy_batch, clear_batch)
                 
-                # Update metrics
+                # Update metrics with batch results
                 self.disc_loss_tracker.update_state(disc_loss)
                 self.gen_loss_tracker.update_state((gen_loss + gen_loss2) / 2)
                 self.l1_loss_tracker.update_state((l1_loss + l1_loss2) / 2)
                 self.psnr_metric.update_state((psnr + psnr2) / 2)
                 self.ssim_metric.update_state((ssim + ssim2) / 2)
                 
-                # Print progress
+                # Print progress periodically
                 if (batch_idx + 1) % 20 == 0:
                     print(f"  Batch {batch_idx+1}/{steps_per_epoch} - "
                           f"D loss: {self.disc_loss_tracker.result():.4f}, "
@@ -305,7 +327,7 @@ class CloudRemovalGAN:
                           f"PSNR: {self.psnr_metric.result():.2f}, "
                           f"SSIM: {self.ssim_metric.result():.4f}")
             
-            # Record history
+            # Record history at end of epoch
             history['gen_loss'].append(self.gen_loss_tracker.result().numpy())
             history['disc_loss'].append(self.disc_loss_tracker.result().numpy())
             history['l1_loss'].append(self.l1_loss_tracker.result().numpy())
@@ -316,12 +338,12 @@ class CloudRemovalGAN:
             if (epoch + 1) % 5 == 0 or epoch == 0:
                 self.visualize_progress(test_cloudy, test_clear, epoch + 1)
             
-            # Save model checkpoints
+            # Save model checkpoints periodically
             if (epoch + 1) % 10 == 0:
                 self.generator.save(f"{OUTPUT_DIR}/generator_epoch_{epoch+1}.h5")
                 print(f"✓ Saved generator checkpoint at epoch {epoch+1}")
         
-        # Save final models
+        # Save final models for future use
         self.generator.save(f"{OUTPUT_DIR}/cloud_removal_generator.h5")
         self.discriminator.save(f"{OUTPUT_DIR}/cloud_removal_discriminator.h5")
         
@@ -334,7 +356,10 @@ class CloudRemovalGAN:
         return history
     
     def visualize_progress(self, test_images, ground_truth_images, epoch):
-        """Generate and save example output from the generator including ground truth comparison"""
+        """Generate and save example output from the generator with ground truth comparison
+        
+        Creates visual comparisons showing the model's current cloud removal capabilities
+        """
         generated_images = self.generator.predict(test_images)
         
         plt.figure(figsize=(15, 5 * len(test_images)))
@@ -365,7 +390,10 @@ class CloudRemovalGAN:
         self.visualize_differences(test_images, generated_images, ground_truth_images, epoch)
     
     def visualize_differences(self, cloudy_images, generated_images, ground_truth_images, epoch):
-        """Visualize pixel-wise differences between generated and ground truth images"""
+        """Visualize pixel-wise differences between generated and ground truth images
+        
+        Creates heatmaps showing where the model's predictions differ from ground truth
+        """
         plt.figure(figsize=(15, 5 * len(cloudy_images)))
         
         for i in range(len(cloudy_images)):
@@ -401,7 +429,7 @@ class CloudRemovalGAN:
             
             # Side-by-side comparison
             plt.subplot(len(cloudy_images), 3, i*3 + 3)
-            # Create a side-by-side comparison
+            # Create a side-by-side comparison for easy visual assessment
             comparison = np.hstack((generated_images[i], ground_truth_images[i]))
             plt.imshow(np.clip(comparison, 0, 1))
             plt.title(f"Gen vs Truth | MAE: {mae:.4f}, PSNR: {psnr:.2f}, SSIM: {ssim:.4f}")
@@ -412,12 +440,15 @@ class CloudRemovalGAN:
         plt.close()
     
     def plot_history(self, history):
-        """Plot and save training history"""
+        """Plot and save training history metrics over time
+        
+        Creates a comprehensive visualization of how model performance evolved during training
+        """
         epochs = range(1, len(history['gen_loss']) + 1)
         
         plt.figure(figsize=(15, 10))
         
-        # Plot losses
+        # Plot adversarial losses
         plt.subplot(2, 2, 1)
         plt.plot(epochs, history['gen_loss'], 'b-', label='Generator Loss')
         plt.plot(epochs, history['disc_loss'], 'r-', label='Discriminator Loss')
@@ -426,21 +457,21 @@ class CloudRemovalGAN:
         plt.ylabel('Loss')
         plt.legend()
         
-        # Plot L1 loss
+        # Plot L1 reconstruction loss
         plt.subplot(2, 2, 2)
         plt.plot(epochs, history['l1_loss'], 'g-')
         plt.title('L1 Loss')
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
         
-        # Plot PSNR
+        # Plot PSNR (Peak Signal-to-Noise Ratio)
         plt.subplot(2, 2, 3)
         plt.plot(epochs, history['psnr'], 'm-')
         plt.title('PSNR (Higher is better)')
         plt.xlabel('Epoch')
         plt.ylabel('PSNR (dB)')
         
-        # Plot SSIM
+        # Plot SSIM (Structural Similarity Index)
         plt.subplot(2, 2, 4)
         plt.plot(epochs, history['ssim'], 'c-')
         plt.title('SSIM (Higher is better)')
@@ -452,10 +483,13 @@ class CloudRemovalGAN:
         plt.close()
         
     def evaluate_model(self, test_cloudy, test_clear):
-        """Evaluate the model on test data and generate comprehensive metrics"""
+        """Evaluate the model on test data and generate comprehensive metrics
+        
+        Produces detailed metrics on model performance across multiple quality dimensions
+        """
         generated_images = self.generator.predict(test_cloudy)
         
-        # Calculate metrics
+        # Calculate various image quality metrics
         metrics = {
             'psnr': [],
             'ssim': [],
@@ -464,11 +498,11 @@ class CloudRemovalGAN:
         }
         
         for i in range(len(test_cloudy)):
-            # Ensure proper normalization
+            # Ensure proper normalization for consistent metrics
             gen_img = np.clip(generated_images[i], 0, 1)
             clear_img = np.clip(test_clear[i], 0, 1)
             
-            # Calculate metrics
+            # Calculate standard image quality metrics
             psnr = tf.image.psnr(
                 tf.convert_to_tensor(clear_img[np.newaxis,...]), 
                 tf.convert_to_tensor(gen_img[np.newaxis,...]), 
@@ -489,7 +523,7 @@ class CloudRemovalGAN:
             metrics['mae'].append(mae)
             metrics['mse'].append(mse)
         
-        # Print average metrics
+        # Print average metrics for quick assessment
         print("\nFinal Evaluation Metrics:")
         print(f"Average PSNR: {np.mean(metrics['psnr']):.2f} dB")
         print(f"Average SSIM: {np.mean(metrics['ssim']):.4f}")
@@ -502,7 +536,10 @@ class CloudRemovalGAN:
         return metrics
     
     def create_evaluation_plot(self, cloudy_images, generated_images, clear_images, metrics):
-        """Create a comprehensive evaluation plot with metrics"""
+        """Create a comprehensive evaluation plot with metrics
+        
+        Shows side-by-side comparisons of input, output, and ground truth with error measurements
+        """
         # Select a subset of images for visualization if there are many
         num_samples = min(10, len(cloudy_images))
         
@@ -527,7 +564,7 @@ class CloudRemovalGAN:
             plt.title(f"Ground Truth")
             plt.axis('off')
             
-            # Difference map
+            # Difference map to visualize errors
             plt.subplot(num_samples, 4, i*4 + 4)
             diff = np.mean(np.abs(generated_images[i] - clear_images[i]), axis=2)
             plt.imshow(diff, cmap='hot', vmin=0, vmax=0.5)
@@ -539,11 +576,14 @@ class CloudRemovalGAN:
         plt.savefig(f"{OUTPUT_DIR}/final_evaluation.png")
         plt.close()
         
-        # Also create a summary plot
+        # Also create a summary plot for distribution of metrics
         self.create_summary_plot(metrics)
     
     def create_summary_plot(self, metrics):
-        """Create a summary plot of evaluation metrics"""
+        """Create a summary plot showing distributions of evaluation metrics
+        
+        Provides statistical overview of model performance across the test set
+        """
         plt.figure(figsize=(15, 10))
         
         # PSNR distribution
