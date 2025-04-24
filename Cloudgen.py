@@ -8,7 +8,7 @@ from tensorflow.keras.optimizers import Adam
 
 # Directories
 DATA_DIR = "cloud_data1"
-OUTPUT_DIR = os.path.join(DATA_DIR, "generated")
+OUTPUT_DIR = os.path.join(DATA_DIR, "generated1")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Load paired data
@@ -260,6 +260,7 @@ class CloudRemovalGAN:
         
         # For visualization
         test_cloudy = cloudy_images[:5]  # Sample images for visualization
+        test_clear = clear_images[:5]   # Corresponding ground truth images
         
         # Training history
         history = {
@@ -313,7 +314,7 @@ class CloudRemovalGAN:
             
             # Visualize generator progress every few epochs
             if (epoch + 1) % 5 == 0 or epoch == 0:
-                self.visualize_progress(test_cloudy, epoch + 1)
+                self.visualize_progress(test_cloudy, test_clear, epoch + 1)
             
             # Save model checkpoints
             if (epoch + 1) % 10 == 0:
@@ -332,26 +333,82 @@ class CloudRemovalGAN:
         
         return history
     
-    def visualize_progress(self, test_images, epoch):
-        """Generate and save example output from the generator"""
+    def visualize_progress(self, test_images, ground_truth_images, epoch):
+        """Generate and save example output from the generator including ground truth comparison"""
         generated_images = self.generator.predict(test_images)
         
         plt.figure(figsize=(15, 5 * len(test_images)))
         for i in range(len(test_images)):
             # Original cloudy image
-            plt.subplot(len(test_images), 2, i*2 + 1)
+            plt.subplot(len(test_images), 3, i*3 + 1)
             plt.imshow(np.clip(test_images[i], 0, 1))
             plt.title(f"Cloudy Input {i+1}")
             plt.axis('off')
             
             # Generated clear image
-            plt.subplot(len(test_images), 2, i*2 + 2)
+            plt.subplot(len(test_images), 3, i*3 + 2)
             plt.imshow(np.clip(generated_images[i], 0, 1))
             plt.title(f"Generated Image {i+1}")
             plt.axis('off')
-        
+            
+            # Ground truth clear image
+            plt.subplot(len(test_images), 3, i*3 + 3)
+            plt.imshow(np.clip(ground_truth_images[i], 0, 1))
+            plt.title(f"Ground Truth {i+1}")
+            plt.axis('off')
+            
         plt.tight_layout()
         plt.savefig(f"{OUTPUT_DIR}/progress_epoch_{epoch}.png")
+        plt.close()
+        
+        # Also save a visualization of the differences
+        self.visualize_differences(test_images, generated_images, ground_truth_images, epoch)
+    
+    def visualize_differences(self, cloudy_images, generated_images, ground_truth_images, epoch):
+        """Visualize pixel-wise differences between generated and ground truth images"""
+        plt.figure(figsize=(15, 5 * len(cloudy_images)))
+        
+        for i in range(len(cloudy_images)):
+            # Difference map (absolute difference between generated and ground truth)
+            diff = np.abs(generated_images[i] - ground_truth_images[i])
+            
+            # Calculate error metrics for this specific image
+            mae = np.mean(diff)
+            mse = np.mean(diff**2)
+            psnr = tf.image.psnr(
+                tf.convert_to_tensor(ground_truth_images[i:i+1]), 
+                tf.convert_to_tensor(generated_images[i:i+1]), 
+                max_val=1.0
+            ).numpy()[0]
+            ssim = tf.image.ssim(
+                tf.convert_to_tensor(ground_truth_images[i:i+1]), 
+                tf.convert_to_tensor(generated_images[i:i+1]), 
+                max_val=1.0
+            ).numpy()[0]
+            
+            # Original cloudy image
+            plt.subplot(len(cloudy_images), 3, i*3 + 1)
+            plt.imshow(np.clip(cloudy_images[i], 0, 1))
+            plt.title(f"Cloudy Input {i+1}")
+            plt.axis('off')
+            
+            # Difference map with heatmap colorscale
+            plt.subplot(len(cloudy_images), 3, i*3 + 2)
+            plt.imshow(np.mean(diff, axis=2), cmap='hot', vmin=0, vmax=0.5)
+            plt.colorbar(fraction=0.046, pad=0.04)
+            plt.title(f"Difference Map {i+1}")
+            plt.axis('off')
+            
+            # Side-by-side comparison
+            plt.subplot(len(cloudy_images), 3, i*3 + 3)
+            # Create a side-by-side comparison
+            comparison = np.hstack((generated_images[i], ground_truth_images[i]))
+            plt.imshow(np.clip(comparison, 0, 1))
+            plt.title(f"Gen vs Truth | MAE: {mae:.4f}, PSNR: {psnr:.2f}, SSIM: {ssim:.4f}")
+            plt.axis('off')
+            
+        plt.tight_layout()
+        plt.savefig(f"{OUTPUT_DIR}/difference_epoch_{epoch}.png")
         plt.close()
     
     def plot_history(self, history):
@@ -393,6 +450,137 @@ class CloudRemovalGAN:
         plt.tight_layout()
         plt.savefig(f"{OUTPUT_DIR}/training_history.png")
         plt.close()
+        
+    def evaluate_model(self, test_cloudy, test_clear):
+        """Evaluate the model on test data and generate comprehensive metrics"""
+        generated_images = self.generator.predict(test_cloudy)
+        
+        # Calculate metrics
+        metrics = {
+            'psnr': [],
+            'ssim': [],
+            'mae': [],
+            'mse': []
+        }
+        
+        for i in range(len(test_cloudy)):
+            # Ensure proper normalization
+            gen_img = np.clip(generated_images[i], 0, 1)
+            clear_img = np.clip(test_clear[i], 0, 1)
+            
+            # Calculate metrics
+            psnr = tf.image.psnr(
+                tf.convert_to_tensor(clear_img[np.newaxis,...]), 
+                tf.convert_to_tensor(gen_img[np.newaxis,...]), 
+                max_val=1.0
+            ).numpy()[0]
+            
+            ssim = tf.image.ssim(
+                tf.convert_to_tensor(clear_img[np.newaxis,...]), 
+                tf.convert_to_tensor(gen_img[np.newaxis,...]), 
+                max_val=1.0
+            ).numpy()[0]
+            
+            mae = np.mean(np.abs(clear_img - gen_img))
+            mse = np.mean((clear_img - gen_img) ** 2)
+            
+            metrics['psnr'].append(psnr)
+            metrics['ssim'].append(ssim)
+            metrics['mae'].append(mae)
+            metrics['mse'].append(mse)
+        
+        # Print average metrics
+        print("\nFinal Evaluation Metrics:")
+        print(f"Average PSNR: {np.mean(metrics['psnr']):.2f} dB")
+        print(f"Average SSIM: {np.mean(metrics['ssim']):.4f}")
+        print(f"Average MAE: {np.mean(metrics['mae']):.4f}")
+        print(f"Average MSE: {np.mean(metrics['mse']):.4f}")
+        
+        # Create a detailed visualization of results
+        self.create_evaluation_plot(test_cloudy, generated_images, test_clear, metrics)
+        
+        return metrics
+    
+    def create_evaluation_plot(self, cloudy_images, generated_images, clear_images, metrics):
+        """Create a comprehensive evaluation plot with metrics"""
+        # Select a subset of images for visualization if there are many
+        num_samples = min(10, len(cloudy_images))
+        
+        plt.figure(figsize=(20, 6 * num_samples))
+        
+        for i in range(num_samples):
+            # Original cloudy image
+            plt.subplot(num_samples, 4, i*4 + 1)
+            plt.imshow(np.clip(cloudy_images[i], 0, 1))
+            plt.title(f"Cloudy Input")
+            plt.axis('off')
+            
+            # Generated clear image
+            plt.subplot(num_samples, 4, i*4 + 2)
+            plt.imshow(np.clip(generated_images[i], 0, 1))
+            plt.title(f"Generated")
+            plt.axis('off')
+            
+            # Ground truth clear image
+            plt.subplot(num_samples, 4, i*4 + 3)
+            plt.imshow(np.clip(clear_images[i], 0, 1))
+            plt.title(f"Ground Truth")
+            plt.axis('off')
+            
+            # Difference map
+            plt.subplot(num_samples, 4, i*4 + 4)
+            diff = np.mean(np.abs(generated_images[i] - clear_images[i]), axis=2)
+            plt.imshow(diff, cmap='hot', vmin=0, vmax=0.5)
+            plt.colorbar(fraction=0.046, pad=0.04)
+            plt.title(f"Error Map | PSNR: {metrics['psnr'][i]:.2f}, SSIM: {metrics['ssim'][i]:.4f}")
+            plt.axis('off')
+            
+        plt.tight_layout()
+        plt.savefig(f"{OUTPUT_DIR}/final_evaluation.png")
+        plt.close()
+        
+        # Also create a summary plot
+        self.create_summary_plot(metrics)
+    
+    def create_summary_plot(self, metrics):
+        """Create a summary plot of evaluation metrics"""
+        plt.figure(figsize=(15, 10))
+        
+        # PSNR distribution
+        plt.subplot(2, 2, 1)
+        plt.hist(metrics['psnr'], bins=10, color='royalblue', alpha=0.7)
+        plt.axvline(np.mean(metrics['psnr']), color='red', linestyle='dashed', linewidth=2)
+        plt.title(f'PSNR Distribution (Mean: {np.mean(metrics["psnr"]):.2f} dB)')
+        plt.xlabel('PSNR (dB)')
+        plt.ylabel('Count')
+        
+        # SSIM distribution
+        plt.subplot(2, 2, 2)
+        plt.hist(metrics['ssim'], bins=10, color='green', alpha=0.7)
+        plt.axvline(np.mean(metrics['ssim']), color='red', linestyle='dashed', linewidth=2)
+        plt.title(f'SSIM Distribution (Mean: {np.mean(metrics["ssim"]):.4f})')
+        plt.xlabel('SSIM')
+        plt.ylabel('Count')
+        
+        # MAE distribution
+        plt.subplot(2, 2, 3)
+        plt.hist(metrics['mae'], bins=10, color='orange', alpha=0.7)
+        plt.axvline(np.mean(metrics['mae']), color='red', linestyle='dashed', linewidth=2)
+        plt.title(f'MAE Distribution (Mean: {np.mean(metrics["mae"]):.4f})')
+        plt.xlabel('MAE')
+        plt.ylabel('Count')
+        
+        # MSE distribution
+        plt.subplot(2, 2, 4)
+        plt.hist(metrics['mse'], bins=10, color='purple', alpha=0.7)
+        plt.axvline(np.mean(metrics['mse']), color='red', linestyle='dashed', linewidth=2)
+        plt.title(f'MSE Distribution (Mean: {np.mean(metrics["mse"]):.4f})')
+        plt.xlabel('MSE')
+        plt.ylabel('Count')
+        
+        plt.tight_layout()
+        plt.savefig(f"{OUTPUT_DIR}/metrics_summary.png")
+        plt.close()
 
 # Memory optimization for TensorFlow (if using GPU)
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -414,4 +602,14 @@ history = cloud_gan.train(cloudy, clear, epochs=2500, batch_size=4)
 print("✓ Training complete!")
 print(f"Final PSNR: {history['psnr'][-1]:.2f}")
 print(f"Final SSIM: {history['ssim'][-1]:.4f}")
-print(f"Model saved to {OUTPUT_DIR}/cloud_removal_generator.h5")
+
+# Compute final evaluation with comprehensive metrics
+print("Performing final evaluation...")
+test_metrics = cloud_gan.evaluate_model(cloudy[:100], clear[:100])  # Use a subset for final evaluation
+
+print("\n Evaluation complete!")
+print("Final average metrics:")
+print(f"  PSNR: {np.mean(test_metrics['psnr']):.2f} dB")
+print(f"  SSIM: {np.mean(test_metrics['ssim']):.4f}")
+print(f"  MAE: {np.mean(test_metrics['mae']):.4f}")
+print(f"  MSE: {np.mean(test_metrics['mse']):.4f}")
