@@ -8,7 +8,7 @@
 #SBATCH -o logs/Zcloudgen2.out
 #SBATCH -e logs/Zcloudgen2.err
 #SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=wali_siddiqui@brown.edu
+#SBATCH --mail-user=_________________  # Your email address <-- sends you an email when job is finished
 
 # Clear any modules and load required ones
 module purge
