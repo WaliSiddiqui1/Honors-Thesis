@@ -1,0 +1,12 @@
+dask
+h5py
+json
+matplotlib
+numpy
+pandas
+pyhdf
+requests
+sklearn
+tensorflow
+tqdm
+zarr
