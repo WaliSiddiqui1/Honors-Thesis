@@ -31,15 +31,15 @@ Replace the placeholder EARTHDATA_TOKEN = "..." in Preprocessing.py with your to
 
 Honors-Thesis-main/
 ├── modis_data/                # Raw HDF satellite data
-├── processed_data_optimized/  # Preprocessed numpy or zarr files
+├── processed_data_optimized/  # Preprocessed numpy or zarr files 
 ├── cloud_data1/               # Classified image patches and metadata
-│   ├── clear/
-│   ├── cloudy/
-│   ├── metadata/
+│   ├── clear/                 # Cloud-free satellite images
+│   ├── cloudy/                # Cloud-covered satellite images
+│   ├── metadata/              # Associated metadata
 │   └── generated1/            # GAN-restored output
-├── *.py                       # Python scripts
+├── *.py                       # Python scripts for processing and analysis
 ├── *.sh                       # SLURM job scripts (for GPU clusters)
-└── requirements.txt
+└── requirements.txt           # Project dependencies
 
 # Pipeline Overview:
 
@@ -114,6 +114,7 @@ python ResnetCNN.py
 python Res2.py
 
 python Cloudgen.py
+
 
 Adjust max_pairs, batch sizes, and file limits based on available RAM.
 
