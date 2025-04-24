@@ -10,15 +10,21 @@ This repository implements a complete deep learning pipeline to enhance MODIS sa
 git clone <your-repo-url>
 
 Set up a Python environment (Python 3.9 or newer recommended):
+
 conda create -n modis-env python=3.9
+
 conda activate modis-env
 
 Install required packages:
+
 pip install -r requirements.txt
 
 Earthdata Credentials:
+
 Register at https://urs.earthdata.nasa.gov/
+
 Generate a Bearer Token
+
 Replace the placeholder EARTHDATA_TOKEN = "..." in Preprocessing.py with your token to enable downloading data from NASA
 
 Folder Structure:
