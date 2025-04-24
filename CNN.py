@@ -407,7 +407,7 @@ def save_split_to_zarr(split_name, mappings):
     with open(os.path.join(SAVE_DIR, f"{split_name}_metadata.json"), 'w') as f:
         json.dump(metadata_split, f)
     
-    print(f"✓ Saved {split_name} split with {current_idx} samples")
+    print(f" Saved {split_name} split with {current_idx} samples")
     return
 
 # Process each split
@@ -415,4 +415,4 @@ save_split_to_zarr("train", train_mappings)
 save_split_to_zarr("val", val_mappings)
 save_split_to_zarr("test", test_mappings)
 
-print(f"✓ All data saved to {SAVE_DIR}")
+print(f" All data saved to {SAVE_DIR}")
