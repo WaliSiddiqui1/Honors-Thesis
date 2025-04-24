@@ -72,7 +72,7 @@ python Features.py
 Uses mutual information, random forest, and AUC to rank features
 Output: feature_analysis/ (if directory is created)
 
-# Full Pipeline --> 
+# Full Pipeline
 Run the following in order:
 
 python Preprocessing.py
