@@ -5,14 +5,15 @@ from concurrent.futures import ProcessPoolExecutor
 import random
 from tqdm import tqdm
 
-# Directory settings
+# Directory settings - points to the output from the classification step
 OUTPUT_DIR = "cloud_data1"
 
 def compute_distance(cloudy_meta, clear_meta):
     """Compute geographic distance between two points if coordinates available"""
     if ('center_lat' in cloudy_meta and 'center_lon' in cloudy_meta and
         'center_lat' in clear_meta and 'center_lon' in clear_meta):
-        # Euclidean distance in coordinate space
+        # Simple Euclidean distance in coordinate space
+        # Note: For production environments, consider using haversine formula for proper geographic distance
         dist = ((cloudy_meta['center_lat'] - clear_meta['center_lat'])**2 + 
                 (cloudy_meta['center_lon'] - clear_meta['center_lon'])**2)**0.5
         return dist
@@ -27,7 +28,8 @@ def find_best_pair(args):
         return scene_pairs  # Skip scenes without both categories
         
     # Limit the number of cloudy images to process per scene for efficiency
-    cloudy_ids = categories['cloudy'][:20]  # Process at most 20 cloudy images per scene
+    # This can be adjusted based on your project needs and available computing resources
+    cloudy_ids = categories['cloudy'][:y]  # Process at most y cloudy images per scene - 20 is a good number to use
     
     for cloudy_id in cloudy_ids:
         cloudy_meta_path = os.path.join(OUTPUT_DIR, "metadata", f"{cloudy_id}.json")
@@ -38,6 +40,7 @@ def find_best_pair(args):
             continue
                 
         # Find the geographically closest clear image from the same scene
+        # This maximizes the relevance of the pairing for training
         closest_clear = None
         min_distance = float('inf')
         
@@ -49,14 +52,14 @@ def find_best_pair(args):
             except FileNotFoundError:
                 continue
             
-            # Calculate distance
+            # Calculate distance when possible to find optimal pairs
             dist = compute_distance(cloudy_meta, clear_meta)
             
             if dist is not None and dist < min_distance:
                 min_distance = dist
                 closest_clear = clear_id
             elif closest_clear is None:
-                # If no distance calculation possible, just pick this clear image
+                # Fallback: if no distance calculation possible, just use this clear image
                 closest_clear = clear_id
         
         if closest_clear:
@@ -72,7 +75,7 @@ def find_best_pair(args):
 def main():
     print("Creating potential pairs for cloud removal training (optimized version)...")
     
-    # Load scenes data
+    # Load scenes data from the classification step
     scenes_path = os.path.join(OUTPUT_DIR, "scenes.json")
     if not os.path.exists(scenes_path):
         print(f"Error: Scenes file not found at {scenes_path}")
@@ -83,21 +86,24 @@ def main():
     
     print(f"Loaded {len(scenes)} scenes with potential pairs")
     
-    # Process in parallel
-    max_workers = os.cpu_count() or 4  # Use number of CPU cores
+    # Process in parallel to maximize efficiency
+    max_workers = os.cpu_count() or 4  # Automatically use all available CPU cores
     print(f"Using {max_workers} workers for parallel processing")
     
     valid_scene_pairs = []
     
-    # Only process scenes that have both clear and cloudy images
+    # Filter for scenes that have both clear and cloudy images
+    # This ensures we only process valuable data for pairing
     valid_scenes = [(scene_id, categories) for scene_id, categories in scenes.items() 
                     if categories['clear'] and categories['cloudy']]
     print(f"Found {len(valid_scenes)} scenes with both clear and cloudy images")
     
     # Shuffle to get a more diverse selection if we limit pairs
+    # This helps ensure good coverage across different geographic regions
+    # In many cases we can just comment this out if we want specificity
     random.shuffle(valid_scenes)
     
-    # Process scenes in parallel
+    # Process scenes in parallel for improved performance
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         results = list(tqdm(
             executor.map(find_best_pair, valid_scenes),
@@ -105,19 +111,19 @@ def main():
             desc="Processing scenes"
         ))
     
-    # Combine results
+    # Combine results from all parallel processes
     for scene_pairs in results:
         valid_scene_pairs.extend(scene_pairs)
     
-    # Shuffle 
+    # Shuffle final pairs to avoid any systematic biases during training
     random.shuffle(valid_scene_pairs)
     
-    # Save pairing information
+    # Save pairing information for use in the next pipeline stage
     pairs_path = os.path.join(OUTPUT_DIR, "paired_data_optimized1.json")
     with open(pairs_path, 'w') as f:
         json.dump(valid_scene_pairs, f)
 
-    print(f"✓ Created {len(valid_scene_pairs)} paired images")
+    print(f" Created {len(valid_scene_pairs)} paired images")
     print(f"Pairs saved to {pairs_path}")
 
 if __name__ == "__main__":
