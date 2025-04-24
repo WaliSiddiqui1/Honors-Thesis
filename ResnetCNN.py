@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import zarr
 import dask.array as da
 
+
 # Directories
 PROCESSED_DIR = "processed_data_optimized"
 OUTPUT_DIR = "cloud_data1"
@@ -52,35 +53,40 @@ print(f"Loaded data: X_train {X_train.shape}, y_train {y_train.shape}")
 print(f"Class distribution in training set: {np.bincount(y_train)}")
 
 # Prepare data for ResNet
-input_shape = (128, 128, 3)
+input_shape = (128, 128, y) # <-- where we specify the bands (normally can just use X_train.shape[-1])
 
-# Check if we need to adjust the channel dimension
-if X_train.shape[-1] < 3:
-    print(f"Data has only {X_train.shape[-1]} channels, duplicating to create RGB...")
-    X_train = np.repeat(X_train, 3 // X_train.shape[-1] + 1, axis=-1)[:, :, :, :3]
-    X_val = np.repeat(X_val, 3 // X_val.shape[-1] + 1, axis=-1)[:, :, :, :3]
-elif X_train.shape[-1] > 3:
-    print(f"Data has {X_train.shape[-1]} channels, selecting first 3 for RGB model...")
-    X_train = X_train[:, :, :, :3]
-    X_val = X_val[:, :, :, :3]
 
 print(f"Prepared data shape: {X_train.shape}")
 
 # Build ResNet model
-print("Building ResNet classifier...")
-base_model = ResNet50(weights="imagenet", include_top=False, input_shape=input_shape)
-base_model.trainable = False  # Freeze base model
+print("Building custom CNN classifier ...")
+inputs = Input(shape=input_shape)
 
-x = GlobalAveragePooling2D()(base_model.output)
+x = Conv2D(32, (3, 3), padding='same')(inputs)
+x = BatchNormalization()(x)
+x = ReLU()(x)
+x = MaxPooling2D(pool_size=(2, 2))(x)
+
+x = Conv2D(64, (3, 3), padding='same')(x)
+x = BatchNormalization()(x)
+x = ReLU()(x)
+x = MaxPooling2D(pool_size=(2, 2))(x)
+
+x = Conv2D(128, (3, 3), padding='same')(x)
+x = BatchNormalization()(x)
+x = ReLU()(x)
+x = GlobalAveragePooling2D()(x)
+
 x = Dense(256, activation='relu')(x)
 x = Dense(128, activation='relu')(x)
-out = Dense(2, activation='softmax')(x)  # Binary: clear or cloudy
+outputs = Dense(2, activation='softmax')(x)
 
-model = Model(inputs=base_model.input, outputs=out)
+model = Model(inputs, outputs)
 model.compile(
     optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
     loss="sparse_categorical_crossentropy",
-    metrics=["accuracy"])
+    metrics=["accuracy"]
+)
 
 # Memory optimization for TensorFlow
 gpus = tf.config.experimental.list_physical_devices('GPU')
