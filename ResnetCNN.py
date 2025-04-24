@@ -4,7 +4,7 @@ import json
 import tensorflow as tf
 from tensorflow.keras.applications import ResNet50
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
+from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Input, Conv2D, BatchNormalization, ReLU, MaxPooling2D
 import matplotlib.pyplot as plt
 import zarr
 import dask.array as da
