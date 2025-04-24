@@ -30,15 +30,25 @@ Replace the placeholder EARTHDATA_TOKEN = "..." in Preprocessing.py with your to
 **Folder Structure**:
 
 Honors-Thesis-main/
+
 ├── modis_data/                # Raw HDF satellite data
+
 ├── processed_data_optimized/  # Preprocessed numpy or zarr files 
+
 ├── cloud_data1/               # Classified image patches and metadata
+
 │   ├── clear/                 # Cloud-free satellite images
+
 │   ├── cloudy/                # Cloud-covered satellite images
+
 │   ├── metadata/              # Associated metadata
+
 │   └── generated1/            # GAN-restored output
+
 ├── *.py                       # Python scripts for processing and analysis
+
 ├── *.sh                       # SLURM job scripts (for GPU clusters)
+
 └── requirements.txt           # Project dependencies
 
 # Pipeline Overview:
