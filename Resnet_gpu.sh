@@ -8,7 +8,7 @@
 #SBATCH -o logs/Res_classifier.out  # Standard output log file
 #SBATCH -e logs/Res_classifier.err  # Standard error log file
 #SBATCH --mail-type=END,FAIL     # Send email on job completion/failure
-#SBATCH --mail-user=wali_siddiqui@brown.edu  # Your email address
+#SBATCH --mail-user=_________________  # Your email address <-- sends you an email when job is finished
 
 # Clear any loaded modules and load required ones
 module purge
