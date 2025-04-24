@@ -5,21 +5,21 @@ import tensorflow as tf
 from datetime import datetime, timedelta
 from pyhdf.SD import SD, SDC  # PyHDF for HDF4 support
 
-# Your Earthdata token
-EARTHDATA_TOKEN = "eyJ0eXAiOiJKV1QiLCJvcmlnaW4iOiJFYXJ0aGRhdGEgTG9naW4iLCJzaWciOiJlZGxqd3RwdWJrZXlfb3BzIiwiYWxnIjoiUlMyNTYifQ.eyJ0eXBlIjoiVXNlciIsInVpZCI6IndhbGlzIiwiZXhwIjoxNzQ3MDI1Mjk5LCJpYXQiOjE3NDE4NDEyOTksImlzcyI6Imh0dHBzOi8vdXJzLmVhcnRoZGF0YS5uYXNhLmdvdiIsImlkZW50aXR5X3Byb3ZpZGVyIjoiZWRsX29wcyIsImFjciI6ImVkbCIsImFzc3VyYW5jZV9sZXZlbCI6M30.LE9IgYXXeTXohGZCNoSJ2VYqWWem8cgT7I-GmdgyEuHfa4RRZowlxXSeC3oVIKUKCSDyoEo2uvJN8-ge8HdR1q05yh7xZIie1V55MerRmeslw2j9bgXrrH5DZtQpP_iINfDFd226PtMtjI4J75N_KOuEZ2IcfVPKF6tKXFOAroePRItEY_bZr5q5X6LDiEnxo8mD4E3-2iLnPmL9-k954Pv1oIJsFKMwr7B62XvsJXlwEhI4F8fC_OM6ZEJEHGb9_zBhB_tHqnmWZgD8b_KkJhO5CjUDO2orMNQhCqxCB6E_JpCBmnbSyeyol0nop4Qy3ttpmWOHjri3LY6s-C-2EA"
+# Earthdata token --> one of the ways to directly download data from MODIS. Needs to be obtained throught Nasa's website
+EARTHDATA_TOKEN = "..."
 
 # CMR API endpoint
 CMR_GRANULE_SEARCH_URL = "https://cmr.earthdata.nasa.gov/search/granules.json"
 
-# Only use products we know exist
+# MODIS Products we want to use
 MODIS_PRODUCTS = {
     "MOD35_L2": "MOD35_L2",  # Cloud Mask
     "MOD021KM": "MOD021KM",  # Calibrated Radiances
 }
 
 # Date range for study
-START_DATE = datetime(2023, 3, 1)
-END_DATE = datetime(2023, 3, x) #any date works
+START_DATE = datetime(2023, 3, 1) # Example start date
+END_DATE = datetime(2023, 3, x) # any date works
 
 # Output directory
 DOWNLOAD_DIR = "modis_data"
