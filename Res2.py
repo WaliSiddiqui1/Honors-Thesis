@@ -59,8 +59,8 @@ def find_best_pair(args):
                 min_distance = dist
                 closest_clear = clear_id
             elif closest_clear is None:
-                # Fallback: if no distance calculation possible, just use this clear image
-                closest_clear = clear_id
+                # Fallback: if no distance calculation possible
+                skip
         
         if closest_clear:
             scene_pairs.append({
