@@ -27,6 +27,8 @@ Generate a Bearer Token
 
 Replace the placeholder EARTHDATA_TOKEN = "..." in Preprocessing.py with your token to enable downloading data from NASA
 
+If you already have the data then this is not necassary
+
 **Folder Structure**:
 
 Honors-Thesis-main/
