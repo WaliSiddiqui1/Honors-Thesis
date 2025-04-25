@@ -27,7 +27,7 @@ Generate a Bearer Token
 
 Replace the placeholder EARTHDATA_TOKEN = "..." in Preprocessing.py with your token to enable downloading data from NASA
 
-If you already have the data then this is not necassary
+If you already have the data, then this is not necessary
 
 **Folder Structure**:
 
@@ -79,9 +79,9 @@ python ResnetCNN.py
 
 Classifies patches as “cloudy” or “clear” using a custom ResNet
 
-Here, one must specify the spectral bands being used or just use the amount available in the given data (see python file for more detail)
+Here, one must specify the spectral bands being used or just use the amount available in the given data (see Python file for more details)
 
-Saves image metadata and split images
+Saves image metadata and splits images
 
 Output: cloud_data1/ folders + metadata
 
