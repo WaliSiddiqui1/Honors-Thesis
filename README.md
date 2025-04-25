@@ -79,7 +79,7 @@ python ResnetCNN.py
 
 Classifies patches as “cloudy” or “clear” using a custom ResNet
 
-Here, one must specify the spectral bands being used or just use the amount available in the given data (see file for more detail)
+Here, one must specify the spectral bands being used or just use the amount available in the given data (see python file for more detail)
 
 Saves image metadata and split images
 
