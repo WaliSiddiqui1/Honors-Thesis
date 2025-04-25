@@ -1,4 +1,4 @@
-# Honors Thesis: Cloud Removal in MODIS Satellite Imagery
+# Honors Thesis: Cloud Removal in Satellite Imagery
 
 This repository implements a complete deep learning pipeline to enhance MODIS satellite images by detecting and removing clouds, and is specifically aimed at Arctic sea ice analysis. The pipeline includes data download, preprocessing, classification, and image restoration using a GAN (Generative adversarial networks).
 
